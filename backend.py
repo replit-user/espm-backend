@@ -49,21 +49,41 @@ def download_module(name: str, version: str):
     """
     if name not in modules or version not in modules[name]:
         return JSONResponse({"error": "Module not found"}, status_code=404)
+    if not version == "latest":
     
-    module_files = modules[name][version]
-    zip_buffer = BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr(f"{name}.stack", module_files["stack"])
-        zip_file.writestr(f"{name}.stackm", module_files["stackm"])
-    
-    zip_buffer.seek(0)
-    
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={name}_{version}.zip"}
-    )
+        module_files = modules[name][version]
+        zip_buffer = BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr(f"{name}.stack", module_files["stack"])
+            zip_file.writestr(f"{name}.stackm", module_files["stackm"])
+        
+        zip_buffer.seek(0)
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={name}_{version}.zip"}
+        )
+    else:
+        versions = []
+        for ver in modules[name]:
+            versions.append(ver)
+        latest_version = max(versions, key=lambda x: tuple(map(int, x.split('.'))))
+        module_files = modules[name][latest_version]
+        zip_buffer = BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr(f"{name}.stack", module_files["stack"])
+            zip_file.writestr(f"{name}.stackm", module_files["stackm"])
+        
+        zip_buffer.seek(0)
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={name}_{latest_version}.zip"}
+        )
 
 
 @app.post("/update/{name}/{version}")
