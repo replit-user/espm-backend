@@ -18,7 +18,7 @@ app.add_middleware(
 
 
 @app.post("/upload")
-async def upload_module(
+def upload_module(
     stack: fastapi.UploadFile = fastapi.File(...),
     stackm: fastapi.UploadFile = fastapi.File(...),
     name: str = fastapi.Form(...),
@@ -30,8 +30,8 @@ async def upload_module(
     if name in modules:
         return JSONResponse({"error": "Module already exists"}, status_code=400)
     
-    stack_content = await stack.read()
-    stackm_content = await stackm.read()
+    stack_content = stack.read()
+    stackm_content = stackm.read()
     
     modules[name] = {
         version: {
@@ -87,7 +87,7 @@ def download_module(name: str, version: str):
 
 
 @app.post("/update/{name}/{version}")
-async def update_module(
+def update_module(
     name: str,
     version: str,
     stack: fastapi.UploadFile = fastapi.File(...),
@@ -101,8 +101,8 @@ async def update_module(
     if version in modules[name]:
         return JSONResponse({"error": "Version already exists"}, status_code=400)
     
-    stack_content = await stack.read()
-    stackm_content = await stackm.read()
+    stack_content = stack.read()
+    stackm_content = stackm.read()
     
     modules[name][version] = {
         "stack": stack_content,
