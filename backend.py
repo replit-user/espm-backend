@@ -101,3 +101,7 @@ def update_module(
         "stackm": stackm_content
     }
     return JSONResponse({"message": "Module version added successfully"})
+
+@app.get("/modules")
+def get_modules():
+    return JSONResponse(modules.values(),200)
