@@ -1,12 +1,10 @@
-import fastapi
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from io import BytesIO
 import zipfile
 
-modules = {}
-
-app = fastapi.FastAPI()
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,92 +14,65 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+modules = {}
 
 @app.post("/upload")
-def upload_module(
-    stack: fastapi.UploadFile = fastapi.File(...),
-    stackm: fastapi.UploadFile = fastapi.File(...),
-    name: str = fastapi.Form(...),
-    version: str = fastapi.Form(...),
+async def upload_module(
+    stack: UploadFile = File(...),
+    stackm: UploadFile = File(...),
+    name: str = Form(...),
+    version: str = Form(...),
 ):
-    """
-    Upload a module to the server. Each module name must be unique.
-    """
     if name in modules:
-        return JSONResponse({"error": "Module already exists"}, status_code=400)
-    
-    stack_content = stack.file.read()
-    stackm_content = stackm.file.read()
-    
-    modules[name] = {
-        version: {
-            "stack": stack_content,
-            "stackm": stackm_content
-        }
-    }
-    return JSONResponse({"message": "Module uploaded successfully"})
-
+        raise HTTPException(status_code=400, detail="Module already exists")
+    stack_content = await stack.read()
+    stackm_content = await stackm.read()
+    modules[name] = {version: {"stack": stack_content, "stackm": stackm_content}}
+    return {"message": "Module uploaded successfully"}
 
 @app.get("/download/{name}/{version}")
-def download_module(name: str, version: str):
-    """
-    Download a module's files as a ZIP archive.
-    """
+async def download_module(name: str, version: str):
     if name not in modules:
-        return JSONResponse({"error": "Module not found"}, status_code=404)
-    
+        raise HTTPException(status_code=404, detail="Module not found")
+    available_versions = modules[name]
     if version == "latest":
-        versions = list(modules[name].keys())
-        if not versions:
-            return JSONResponse({"error": "No versions available"}, status_code=404)
-        # Convert version strings to tuples of integers for proper comparison
-        latest_version = max(versions, key=lambda x: tuple(map(int, x.split('.'))))
-        module_files = modules[name][latest_version]
-        filename_version = latest_version
+        sorted_versions = sorted(available_versions.keys(), key=lambda v: tuple(map(int, v.split('.'))), reverse=True)
+        if not sorted_versions:
+            raise HTTPException(status_code=404, detail="No versions available")
+        selected_version = sorted_versions[0]
     else:
-        if version not in modules[name]:
-            return JSONResponse({"error": "Version not found"}, status_code=404)
-        module_files = modules[name][version]
-        filename_version = version
-    
+        if version not in available_versions:
+            raise HTTPException(status_code=404, detail="Version not found")
+        selected_version = version
+    module_data = available_versions[selected_version]
     zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr(f"{name}.stack", module_files["stack"])
-        zip_file.writestr(f"{name}.stackm", module_files["stackm"])
-    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr(f"{name}.stack", module_data["stack"])
+        zip_file.writestr(f"{name}.stackm", module_data["stackm"])
     zip_buffer.seek(0)
-    
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{name}_{filename_version}.zip"'}
+        headers={"Content-Disposition": f'attachment; filename="{name}_{selected_version}.zip"'}
     )
 
-
 @app.post("/update/{name}/{version}")
-def update_module(
+async def update_module(
     name: str,
     version: str,
-    stack: fastapi.UploadFile = fastapi.File(...),
-    stackm: fastapi.UploadFile = fastapi.File(...),
+    stack: UploadFile = File(...),
+    stackm: UploadFile = File(...),
 ):
-    """
-    Add a new version to an existing module.
-    """
     if name not in modules:
-        return JSONResponse({"error": "Module not found"}, status_code=404)
+        raise HTTPException(status_code=404, detail="Module not found")
     if version in modules[name]:
-        return JSONResponse({"error": "Version already exists"}, status_code=400)
-    
-    stack_content = stack.file.read()
-    stackm_content = stackm.file.read()
-    
-    modules[name][version] = {
-        "stack": stack_content,
-        "stackm": stackm_content
-    }
-    return JSONResponse({"message": "Module version added successfully"})
+        raise HTTPException(status_code=400, detail="Version already exists")
+    stack_content = await stack.read()
+    stackm_content = await stackm.read()
+    modules[name][version] = {"stack": stack_content, "stackm": stackm_content}
+    return {"message": "Module version added successfully"}
 
 @app.get("/modules")
-def get_modules():
-    return JSONResponse(modules.values(),200)
+async def list_modules():
+    simplified_modules = {name: list(versions.keys()) for name, versions in modules.items()}
+    return JSONResponse(content=simplified_modules)
