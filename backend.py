@@ -30,8 +30,8 @@ def upload_module(
     if name in modules:
         return JSONResponse({"error": "Module already exists"}, status_code=400)
     
-    stack_content = stack.read()
-    stackm_content = stackm.read()
+    stack_content = stack.file.read()
+    stackm_content = stackm.file.read()
     
     modules[name] = {
         version: {
@@ -57,10 +57,12 @@ def download_module(name: str, version: str):
         # Convert version strings to tuples of integers for proper comparison
         latest_version = max(versions, key=lambda x: tuple(map(int, x.split('.'))))
         module_files = modules[name][latest_version]
+        filename_version = latest_version
     else:
         if version not in modules[name]:
             return JSONResponse({"error": "Version not found"}, status_code=404)
         module_files = modules[name][version]
+        filename_version = version
     
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -69,11 +71,10 @@ def download_module(name: str, version: str):
     
     zip_buffer.seek(0)
     
-    filename_version = latest_version if version == "latest" else version
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={name}_{filename_version}.zip"}
+        headers={"Content-Disposition": f'attachment; filename="{name}_{filename_version}.zip"'}
     )
 
 
@@ -92,8 +93,8 @@ def update_module(
     if version in modules[name]:
         return JSONResponse({"error": "Version already exists"}, status_code=400)
     
-    stack_content = stack.read()
-    stackm_content = stackm.read()
+    stack_content = stack.file.read()
+    stackm_content = stackm.file.read()
     
     modules[name][version] = {
         "stack": stack_content,
