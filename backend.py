@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from io import BytesIO
 import zipfile
+import base64
+import json
 
 app = FastAPI()
 
@@ -16,6 +18,22 @@ app.add_middleware(
 
 modules = {}
 
+def load_modules_from_file():
+    global modules
+    try:
+        with open('modules.json', 'r') as f:
+            modules = json.load(f)
+    except FileNotFoundError:
+        modules = {}
+
+def save_modules_to_file():
+    with open('modules.json', 'w') as f:
+        json.dump(modules, f)
+
+@app.on_event("startup")
+async def startup_event():
+    load_modules_from_file()
+
 @app.post("/upload")
 async def upload_module(
     stack: UploadFile = File(...),
@@ -27,7 +45,10 @@ async def upload_module(
         raise HTTPException(status_code=400, detail="Module already exists")
     stack_content = await stack.read()
     stackm_content = await stackm.read()
-    modules[name] = {version: {"stack": stack_content, "stackm": stackm_content}}
+    stack_b64 = base64.b64encode(stack_content).decode('utf-8')
+    stackm_b64 = base64.b64encode(stackm_content).decode('utf-8')
+    modules[name] = {version: {"stack": stack_b64, "stackm": stackm_b64}}
+    save_modules_to_file()
     return {"message": "Module uploaded successfully"}
 
 @app.get("/download/{name}/{version}")
@@ -45,10 +66,12 @@ async def download_module(name: str, version: str):
             raise HTTPException(status_code=404, detail="Version not found")
         selected_version = version
     module_data = available_versions[selected_version]
+    stack_bytes = base64.b64decode(module_data["stack"])
+    stackm_bytes = base64.b64decode(module_data["stackm"])
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr(f"{name}.stack", module_data["stack"])
-        zip_file.writestr(f"{name}.stackm", module_data["stackm"])
+        zip_file.writestr(f"{name}.stack", stack_bytes)
+        zip_file.writestr(f"{name}.stackm", stackm_bytes)
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,
@@ -69,7 +92,10 @@ async def update_module(
         raise HTTPException(status_code=400, detail="Version already exists")
     stack_content = await stack.read()
     stackm_content = await stackm.read()
-    modules[name][version] = {"stack": stack_content, "stackm": stackm_content}
+    stack_b64 = base64.b64encode(stack_content).decode('utf-8')
+    stackm_b64 = base64.b64encode(stackm_content).decode('utf-8')
+    modules[name][version] = {"stack": stack_b64, "stackm": stackm_b64}
+    save_modules_to_file()
     return {"message": "Module version added successfully"}
 
 @app.get("/modules")
